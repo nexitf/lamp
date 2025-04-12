@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xeitf/lamp"
+	"github.com/nexitf/lamp"
 )
 
 func TestXxx(t *testing.T) {

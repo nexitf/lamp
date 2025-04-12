@@ -1,4 +1,4 @@
-module github.com/xeitf/lamp
+module github.com/nexitf/lamp
 
 go 1.18
 
