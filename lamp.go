@@ -15,8 +15,8 @@ var (
 )
 
 const (
-	NodeProtocolAny   = "any"
-	NodeWeightDefault = 100
+	NodeProtocolDefault = "mixed"
+	NodeWeightDefault   = 100
 )
 
 type Middleware interface {
@@ -96,32 +96,28 @@ func WithTTL(ttl int64) ExposeOption {
 
 // WithPublic
 func WithPublic(addr string) ExposeOption {
-	return WithPublicOptions(0, addr, NodeProtocolAny, NodeWeightDefault, false)
+	return WithPublicOptions(0, addr, NodeProtocolDefault, NodeWeightDefault)
 }
 
 // WithPublicOptions
-func WithPublicOptions(sharding int, addr string, protocol string, weight int, readyOnly bool) ExposeOption {
+func WithPublicOptions(id int, addr string, protocol string, weight int) ExposeOption {
 	return newFnExposeOption(func(opts *exposeOptions) {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return
 		}
-		if sharding <= 0 {
-			if value := os.Getenv("LAMP_NODE_SHARDING"); value != "" {
-				sharding, _ = strconv.Atoi(value)
+		if id <= 0 {
+			if value := os.Getenv("LAMP_NODE_ID"); value != "" {
+				id, _ = strconv.Atoi(value)
 			}
 		}
 		if host == "" {
 			host = os.Getenv("LAMP_NODE_HOSTNAME")
 		}
-		if host == "" || port == "" || protocol == "" || weight <= 0 || sharding < 0 {
+		if host == "" || port == "" || protocol == "" || weight < 0 || id < 0 {
 			return
 		}
-		ro := 0
-		if readyOnly {
-			ro = 1
-		}
-		opts.Addrs[protocol] = Address{Sharding: sharding, Addr: host + ":" + port, Weight: weight, ReadOnly: ro}
+		opts.Addrs[protocol] = Address{ID: id, Addr: host + ":" + port, Weight: weight}
 	})
 }
 
@@ -154,7 +150,12 @@ func (c *Client) ExposeWithContext(ctx context.Context, serviceName string, opts
 }
 
 // Discover
-func (c *Client) Discover(serviceName string, protocol string) (addrs []Address, err error) {
+func (c *Client) Discover(serviceName string) (addrs []Address, err error) {
+	return c.DiscoverWithContext(context.Background(), serviceName, NodeProtocolDefault)
+}
+
+// DiscoverWithProtocol
+func (c *Client) DiscoverWithProtocol(serviceName string, protocol string) (addrs []Address, err error) {
 	return c.DiscoverWithContext(context.Background(), serviceName, protocol)
 }
 
@@ -164,7 +165,12 @@ func (c *Client) DiscoverWithContext(ctx context.Context, serviceName string, pr
 }
 
 // Watch
-func (c *Client) Watch(serviceName string, protocol string, update func(addrs []Address, closed bool)) (close func(), err error) {
+func (c *Client) Watch(serviceName string, update func(addrs []Address, closed bool)) (close func(), err error) {
+	return c.WatchWithContext(context.Background(), serviceName, NodeProtocolDefault, update)
+}
+
+// WatchWithProtocol
+func (c *Client) WatchWithProtocol(serviceName string, protocol string, update func(addrs []Address, closed bool)) (close func(), err error) {
 	return c.WatchWithContext(context.Background(), serviceName, protocol, update)
 }
 

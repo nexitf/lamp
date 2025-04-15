@@ -6,17 +6,16 @@ import (
 )
 
 type Address struct {
-	Sharding int    `json:"sharding,omitempty"`
-	Addr     string `json:"addr,omitempty"`
-	Weight   int    `json:"weight,omitempty"`
-	ReadOnly int    `json:"readonly,omitempty"`
+	ID     int    `json:"id,omitempty"`
+	Addr   string `json:"addr,omitempty"`
+	Weight int    `json:"weight,omitempty"`
 }
 
 type Node struct {
-	Addr     string `json:"addr,omitempty"`
-	Weight   int    `json:"weight,omitempty"`
-	ReadOnly int    `json:"readonly,omitempty"`
-	Time     int64  `json:"time,omitempty"`
+	ID     int    `json:"id,omitempty"`
+	Addr   string `json:"addr,omitempty"`
+	Weight int    `json:"weight,omitempty"`
+	Time   int64  `json:"time,omitempty"`
 }
 
 // generateNodeID

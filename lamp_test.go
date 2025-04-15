@@ -11,7 +11,7 @@ import (
 )
 
 func TestXxx(t *testing.T) {
-	os.Setenv("PUBLIC_HOSTNAME", "127.0.0.1")
+	os.Setenv("LAMP_NODE_HOSTNAME", "127.0.0.1")
 
 	lc, err := lamp.NewClient("etcd://127.0.0.1:2379/services")
 	if err != nil {
@@ -23,7 +23,7 @@ func TestXxx(t *testing.T) {
 	cancel, err := lc.Expose("user-svr",
 		lamp.WithTTL(5),
 		lamp.WithPublic(":8999"),
-		lamp.WithPublicOptions(0, ":80", "http", 100, true),
+		lamp.WithPublicOptions(1, ":80", "http", lamp.NodeWeightDefault),
 	)
 	if err != nil {
 		t.Errorf("lamp.Expose: %s", err.Error())
@@ -40,7 +40,7 @@ func TestXxx(t *testing.T) {
 	}
 	defer cancel2()
 
-	closeWatch, err := lc.Watch("user-svr", "grpc", func(addrs []lamp.Address, closed bool) {
+	closeWatch, err := lc.Watch("user-svr", func(addrs []lamp.Address, closed bool) {
 		fmt.Printf("Watch: %+v %+v\n", addrs, closed)
 	})
 	if err != nil {
@@ -55,7 +55,7 @@ func TestXxx(t *testing.T) {
 		wg.Done()
 
 		for range time.Tick(time.Second * 2) {
-			addrs, err := lc.Discover("user-svr", "tcp")
+			addrs, err := lc.Discover("user-svr")
 			if err != nil {
 				fmt.Printf("Discover: %s\n", err.Error())
 			} else {
