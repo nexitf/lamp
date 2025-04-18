@@ -119,6 +119,7 @@ func (c *etcdClient) Expose(ctx context.Context, serviceName string, addrs map[s
 			ID:     addr.ID,
 			Addr:   addr.Addr,
 			Weight: addr.Weight,
+			Meta:   addr.Meta,
 			Time:   now.Unix(),
 		}
 		info, err := json.Marshal(node)
@@ -286,7 +287,7 @@ func (c *etcdClient) selectAddrs(serviceAddrs map[string]map[string]Node, protoc
 	}
 	if protocolAddrs, ok := serviceAddrs[protocol]; ok {
 		for _, addr := range protocolAddrs {
-			addrs = append(addrs, Address{ID: addr.ID, Addr: addr.Addr, Weight: addr.Weight})
+			addrs = append(addrs, Address{ID: addr.ID, Addr: addr.Addr, Weight: addr.Weight, Meta: addr.Meta})
 		}
 	}
 	return

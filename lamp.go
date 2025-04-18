@@ -96,11 +96,11 @@ func WithTTL(ttl int64) ExposeOption {
 
 // WithPublic
 func WithPublic(addr string) ExposeOption {
-	return WithPublicOptions(0, addr, NodeProtocolDefault, NodeWeightDefault)
+	return WithPublicOptions(0, addr, NodeProtocolDefault, NodeWeightDefault, "")
 }
 
 // WithPublicOptions
-func WithPublicOptions(id int, addr string, protocol string, weight int) ExposeOption {
+func WithPublicOptions(id int, addr string, protocol string, weight int, meta string) ExposeOption {
 	return newFnExposeOption(func(opts *exposeOptions) {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
@@ -117,7 +117,7 @@ func WithPublicOptions(id int, addr string, protocol string, weight int) ExposeO
 		if host == "" || port == "" || protocol == "" || weight < 0 || id < 0 {
 			return
 		}
-		opts.Addrs[protocol] = Address{ID: id, Addr: host + ":" + port, Weight: weight}
+		opts.Addrs[protocol] = Address{ID: id, Addr: host + ":" + port, Weight: weight, Meta: meta}
 	})
 }
 

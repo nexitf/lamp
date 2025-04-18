@@ -2,6 +2,7 @@ package lamp_test
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"sync"
 	"testing"
@@ -23,7 +24,7 @@ func TestXxx(t *testing.T) {
 	cancel, err := lc.Expose("user-svr",
 		lamp.WithTTL(5),
 		lamp.WithPublic(":8999"),
-		lamp.WithPublicOptions(1, ":80", "http", lamp.NodeWeightDefault),
+		lamp.WithPublicOptions(1, ":3306", "mysql", lamp.NodeWeightDefault, "username=admin&password=123456"),
 	)
 	if err != nil {
 		t.Errorf("lamp.Expose: %s", err.Error())
@@ -55,10 +56,14 @@ func TestXxx(t *testing.T) {
 		wg.Done()
 
 		for range time.Tick(time.Second * 2) {
-			addrs, err := lc.Discover("user-svr")
+			addrs, err := lc.DiscoverWithProtocol("user-svr", "mysql")
 			if err != nil {
 				fmt.Printf("Discover: %s\n", err.Error())
 			} else {
+				for _, addr := range addrs {
+					options, _ := url.ParseQuery(addr.Meta)
+					fmt.Printf("Meta: %+v\n", options)
+				}
 				fmt.Printf("Discover: %+v\n", addrs)
 			}
 		}

@@ -9,12 +9,14 @@ type Address struct {
 	ID     int    `json:"id,omitempty"`
 	Addr   string `json:"addr,omitempty"`
 	Weight int    `json:"weight,omitempty"`
+	Meta   string `json:"meta,omitempty"`
 }
 
 type Node struct {
 	ID     int    `json:"id,omitempty"`
 	Addr   string `json:"addr,omitempty"`
 	Weight int    `json:"weight,omitempty"`
+	Meta   string `json:"meta,omitempty"`
 	Time   int64  `json:"time,omitempty"`
 }
 
