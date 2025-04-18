@@ -26,6 +26,7 @@ type etcdClient struct {
 var (
 	ErrInvalidEndpoint = errors.New("invalid endpoint")
 	ErrInvalidKey      = errors.New("invalid key")
+	ErrInvalidValue    = errors.New("invalid value")
 	ErrInvalidAddress  = errors.New("invalid address")
 	ErrRegisterFailed  = errors.New("register failed")
 )
@@ -161,7 +162,11 @@ func (c *etcdClient) Discover(ctx context.Context, serviceName string, protocol 
 	serviceAddrs := make(map[string]map[string]Node)
 
 	for _, kv := range getResp.Kvs {
-		p, id, node, err := c.isValidNode(servicePrefix, string(kv.Key), kv.Value)
+		p, id, err := c.isValidKey(servicePrefix, string(kv.Key))
+		if err != nil {
+			continue
+		}
+		node, err := c.isValidNode(kv.Value)
 		if err != nil {
 			continue
 		}
@@ -187,7 +192,11 @@ func (c *etcdClient) Watch(ctx context.Context, serviceName string, protocol str
 	}
 
 	for _, kv := range getResp.Kvs {
-		p, id, node, err := c.isValidNode(servicePrefix, string(kv.Key), kv.Value)
+		p, id, err := c.isValidKey(servicePrefix, string(kv.Key))
+		if err != nil {
+			continue
+		}
+		node, err := c.isValidNode(kv.Value)
 		if err != nil {
 			continue
 		}
@@ -221,7 +230,11 @@ func (c *etcdClient) watch(servicePrefix, protocol string, update func(addrs []A
 	update(c.selectAddrs(serviceAddrs, protocol), false)
 
 	put := func(key string, value []byte) {
-		p, id, node, err := c.isValidNode(servicePrefix, key, value)
+		p, id, err := c.isValidKey(servicePrefix, key)
+		if err != nil {
+			return
+		}
+		node, err := c.isValidNode(value)
 		if err != nil {
 			return
 		}
@@ -233,7 +246,7 @@ func (c *etcdClient) watch(servicePrefix, protocol string, update func(addrs []A
 	}
 
 	rem := func(key string, value []byte) {
-		p, id, _, err := c.isValidNode(servicePrefix, key, value)
+		p, id, err := c.isValidKey(servicePrefix, key)
 		if err != nil {
 			return
 		}
@@ -259,14 +272,19 @@ func (c *etcdClient) watch(servicePrefix, protocol string, update func(addrs []A
 	}
 }
 
-// isValidNode
-func (c *etcdClient) isValidNode(servicePrefix, key string, value []byte) (protocol string, nodeID string, node Node, err error) {
+// isValidKey
+func (c *etcdClient) isValidKey(servicePrefix, key string) (protocol string, nodeID string, err error) {
 	protocol, nodeID, ok := c.splitProtocolAndNodeID(key, servicePrefix)
 	if !ok {
-		return "", "", Node{}, ErrInvalidKey
+		err = ErrInvalidKey
 	}
+	return
+}
+
+// isValidNode
+func (c *etcdClient) isValidNode(value []byte) (node Node, err error) {
 	if err = json.Unmarshal(value, &node); err != nil {
-		return "", "", Node{}, err
+		return Node{}, ErrInvalidValue
 	}
 	return
 }
