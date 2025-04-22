@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 )
 
-type Address struct {
+type Endpoint struct {
 	ID     int    `json:"id,omitempty"`
 	Addr   string `json:"addr,omitempty"`
 	Weight int    `json:"weight,omitempty"`

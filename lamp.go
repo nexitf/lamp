@@ -11,7 +11,7 @@ import (
 
 var (
 	ErrMiddlewareNotSupported = errors.New("middleware not supported")
-	ErrAddressNotFound        = errors.New("address not found")
+	ErrEndpointNotFound       = errors.New("endpoint not found")
 )
 
 const (
@@ -20,9 +20,9 @@ const (
 )
 
 type Middleware interface {
-	Expose(ctx context.Context, serviceName string, addrs map[string]Address, ttl int64) (cancel func() error, err error)
-	Discover(ctx context.Context, serviceName string, protocol string) (addrs []Address, err error)
-	Watch(ctx context.Context, serviceName string, protocol string, update func(addrs []Address, closed bool)) (close func(), err error)
+	Expose(ctx context.Context, serviceName string, endpoints map[string]Endpoint, ttl int64) (cancel func() error, err error)
+	Discover(ctx context.Context, serviceName string, protocol string) (endpoints []Endpoint, err error)
+	Watch(ctx context.Context, serviceName string, protocol string, update func(endpoints []Endpoint, closed bool)) (close func(), err error)
 	Close() error
 }
 
@@ -67,8 +67,8 @@ func NewClient(cfg string) (c *Client, err error) {
 }
 
 type exposeOptions struct {
-	Addrs map[string]Address
-	TTL   int64
+	endpoints map[string]Endpoint
+	ttl       int64
 }
 
 type fnExposeOption struct {
@@ -91,7 +91,7 @@ type ExposeOption interface {
 
 // WithTTL
 func WithTTL(ttl int64) ExposeOption {
-	return newFnExposeOption(func(opts *exposeOptions) { opts.TTL = ttl })
+	return newFnExposeOption(func(opts *exposeOptions) { opts.ttl = ttl })
 }
 
 // WithPublic
@@ -117,7 +117,7 @@ func WithPublicOptions(id int, addr string, protocol string, weight int, meta st
 		if host == "" || port == "" || protocol == "" || weight < 0 || id < 0 {
 			return
 		}
-		opts.Addrs[protocol] = Address{ID: id, Addr: host + ":" + port, Weight: weight, Meta: meta}
+		opts.endpoints[protocol] = Endpoint{ID: id, Addr: host + ":" + port, Weight: weight, Meta: meta}
 	})
 }
 
@@ -129,53 +129,53 @@ func (c *Client) Expose(serviceName string, opts ...ExposeOption) (cancel func()
 // ExposeWithContext
 func (c *Client) ExposeWithContext(ctx context.Context, serviceName string, opts ...ExposeOption) (cancel func() error, err error) {
 	expOpts := exposeOptions{
-		Addrs: make(map[string]Address),
+		endpoints: make(map[string]Endpoint),
 	}
 	// Apply options
 	for _, opt := range opts {
 		opt.apply(&expOpts)
 	}
 
-	// Option: TTL
-	if expOpts.TTL <= 0 {
-		expOpts.TTL = 30
+	// Option: ttl
+	if expOpts.ttl <= 0 {
+		expOpts.ttl = 30
 	}
 
-	// Option: Addrs
-	if len(expOpts.Addrs) <= 0 {
-		return nil, ErrAddressNotFound
+	// Option: endpoints
+	if len(expOpts.endpoints) <= 0 {
+		return nil, ErrEndpointNotFound
 	}
 
-	return c.middleware.Expose(ctx, serviceName, expOpts.Addrs, expOpts.TTL)
+	return c.middleware.Expose(ctx, serviceName, expOpts.endpoints, expOpts.ttl)
 }
 
 // Discover
-func (c *Client) Discover(serviceName string) (addrs []Address, err error) {
+func (c *Client) Discover(serviceName string) (endpoints []Endpoint, err error) {
 	return c.DiscoverWithContext(context.Background(), serviceName, NodeProtocolDefault)
 }
 
 // DiscoverWithProtocol
-func (c *Client) DiscoverWithProtocol(serviceName string, protocol string) (addrs []Address, err error) {
+func (c *Client) DiscoverWithProtocol(serviceName string, protocol string) (endpoints []Endpoint, err error) {
 	return c.DiscoverWithContext(context.Background(), serviceName, protocol)
 }
 
 // DiscoverWithContext
-func (c *Client) DiscoverWithContext(ctx context.Context, serviceName string, protocol string) (addrs []Address, err error) {
+func (c *Client) DiscoverWithContext(ctx context.Context, serviceName string, protocol string) (endpoints []Endpoint, err error) {
 	return c.middleware.Discover(ctx, serviceName, protocol)
 }
 
 // Watch
-func (c *Client) Watch(serviceName string, update func(addrs []Address, closed bool)) (close func(), err error) {
+func (c *Client) Watch(serviceName string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
 	return c.WatchWithContext(context.Background(), serviceName, NodeProtocolDefault, update)
 }
 
 // WatchWithProtocol
-func (c *Client) WatchWithProtocol(serviceName string, protocol string, update func(addrs []Address, closed bool)) (close func(), err error) {
+func (c *Client) WatchWithProtocol(serviceName string, protocol string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
 	return c.WatchWithContext(context.Background(), serviceName, protocol, update)
 }
 
 // WatchWithContext
-func (c *Client) WatchWithContext(ctx context.Context, serviceName string, protocol string, update func(addrs []Address, closed bool)) (close func(), err error) {
+func (c *Client) WatchWithContext(ctx context.Context, serviceName string, protocol string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
 	return c.middleware.Watch(ctx, serviceName, protocol, update)
 }
 

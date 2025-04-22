@@ -24,11 +24,11 @@ type etcdClient struct {
 }
 
 var (
-	ErrInvalidEndpoint = errors.New("invalid endpoint")
-	ErrInvalidKey      = errors.New("invalid key")
-	ErrInvalidValue    = errors.New("invalid value")
-	ErrInvalidAddress  = errors.New("invalid address")
-	ErrRegisterFailed  = errors.New("register failed")
+	ErrInvalidEtcdEndpoint    = errors.New("invalid etcd endpoint")
+	ErrInvalidKey             = errors.New("invalid key")
+	ErrInvalidValue           = errors.New("invalid value")
+	ErrInvalidExposedEndpoint = errors.New("invalid exposed endpoint")
+	ErrRegisterFailed         = errors.New("register failed")
 )
 
 // newEtcd
@@ -49,7 +49,7 @@ func newEtcdWithURL(ctx context.Context, URL *url.URL) (c *etcdClient, err error
 
 	// Option: Endpoints
 	if URL.Host == "" {
-		return nil, ErrInvalidEndpoint
+		return nil, ErrInvalidEtcdEndpoint
 	}
 	for _, endpoint := range strings.Split(URL.Host, ",") {
 		if _, _, err = net.SplitHostPort(endpoint); err != nil {
@@ -67,9 +67,9 @@ func newEtcdWithURL(ctx context.Context, URL *url.URL) (c *etcdClient, err error
 }
 
 // Expose
-func (c *etcdClient) Expose(ctx context.Context, serviceName string, addrs map[string]Address, ttl int64) (cancel func() error, err error) {
-	if len(addrs) <= 0 {
-		return nil, ErrInvalidAddress
+func (c *etcdClient) Expose(ctx context.Context, serviceName string, endpoints map[string]Endpoint, ttl int64) (cancel func() error, err error) {
+	if len(endpoints) <= 0 {
+		return nil, ErrInvalidExposedEndpoint
 	}
 
 	leaseResp, err := c.cli.Grant(ctx, int64(ttl))
@@ -92,7 +92,7 @@ func (c *etcdClient) Expose(ctx context.Context, serviceName string, addrs map[s
 
 	var wg sync.WaitGroup
 	var now = time.Now()
-	var ops = make([]client.Op, 0, len(addrs))
+	var ops = make([]client.Op, 0, len(endpoints))
 	var servicePrefix = c.servicePrefix(serviceName)
 
 	wg.Add(1)
@@ -115,12 +115,12 @@ func (c *etcdClient) Expose(ctx context.Context, serviceName string, addrs map[s
 
 	wg.Wait()
 
-	for protocol, addr := range addrs {
+	for protocol, endpoint := range endpoints {
 		node := Node{
-			ID:     addr.ID,
-			Addr:   addr.Addr,
-			Weight: addr.Weight,
-			Meta:   addr.Meta,
+			ID:     endpoint.ID,
+			Addr:   endpoint.Addr,
+			Weight: endpoint.Weight,
+			Meta:   endpoint.Meta,
 			Time:   now.Unix(),
 		}
 		info, err := json.Marshal(node)
@@ -130,7 +130,7 @@ func (c *etcdClient) Expose(ctx context.Context, serviceName string, addrs map[s
 		}
 		ops = append(ops,
 			client.OpPut(
-				servicePrefix+"/"+protocol+"/"+generateNodeID(addr.Addr),
+				servicePrefix+"/"+protocol+"/"+generateNodeID(endpoint.Addr),
 				string(info),
 				client.WithLease(leaseResp.ID),
 			))
@@ -151,7 +151,7 @@ func (c *etcdClient) Expose(ctx context.Context, serviceName string, addrs map[s
 }
 
 // Discover
-func (c *etcdClient) Discover(ctx context.Context, serviceName string, protocol string) (addrs []Address, err error) {
+func (c *etcdClient) Discover(ctx context.Context, serviceName string, protocol string) (endpoints []Endpoint, err error) {
 	servicePrefix := c.servicePrefix(serviceName)
 
 	getResp, err := c.cli.Get(ctx, servicePrefix, client.WithPrefix())
@@ -159,7 +159,7 @@ func (c *etcdClient) Discover(ctx context.Context, serviceName string, protocol 
 		return nil, err
 	}
 
-	serviceAddrs := make(map[string]map[string]Node)
+	serviceNodes := make(map[string]map[string]Node)
 
 	for _, kv := range getResp.Kvs {
 		p, id, err := c.isValidKey(servicePrefix, string(kv.Key))
@@ -170,20 +170,20 @@ func (c *etcdClient) Discover(ctx context.Context, serviceName string, protocol 
 		if err != nil {
 			continue
 		}
-		if _, ok := serviceAddrs[p]; !ok {
-			serviceAddrs[p] = map[string]Node{id: node}
+		if _, ok := serviceNodes[p]; !ok {
+			serviceNodes[p] = map[string]Node{id: node}
 		} else {
-			serviceAddrs[p][id] = node
+			serviceNodes[p][id] = node
 		}
 	}
 
-	return c.selectAddrs(serviceAddrs, protocol), nil
+	return c.selectEndpoints(serviceNodes, protocol), nil
 }
 
 // Watch
-func (c *etcdClient) Watch(ctx context.Context, serviceName string, protocol string, update func(addrs []Address, closed bool)) (close func(), err error) {
+func (c *etcdClient) Watch(ctx context.Context, serviceName string, protocol string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
 	var wg sync.WaitGroup
-	var serviceAddrs = make(map[string]map[string]Node)
+	var serviceNodes = make(map[string]map[string]Node)
 	var servicePrefix = c.servicePrefix(serviceName)
 
 	getResp, err := c.cli.Get(ctx, servicePrefix, client.WithPrefix())
@@ -200,10 +200,10 @@ func (c *etcdClient) Watch(ctx context.Context, serviceName string, protocol str
 		if err != nil {
 			continue
 		}
-		if _, ok := serviceAddrs[p]; !ok {
-			serviceAddrs[p] = map[string]Node{id: node}
+		if _, ok := serviceNodes[p]; !ok {
+			serviceNodes[p] = map[string]Node{id: node}
 		} else {
-			serviceAddrs[p][id] = node
+			serviceNodes[p][id] = node
 		}
 	}
 
@@ -213,7 +213,7 @@ func (c *etcdClient) Watch(ctx context.Context, serviceName string, protocol str
 	wg.Add(1)
 	go func() {
 		wg.Done()
-		c.watch(servicePrefix, protocol, update, serviceAddrs, watchChan)
+		c.watch(servicePrefix, protocol, update, serviceNodes, watchChan)
 	}()
 
 	wg.Wait()
@@ -222,12 +222,12 @@ func (c *etcdClient) Watch(ctx context.Context, serviceName string, protocol str
 }
 
 // watch
-func (c *etcdClient) watch(servicePrefix, protocol string, update func(addrs []Address, closed bool),
-	serviceAddrs map[string]map[string]Node, watchChan client.WatchChan) {
+func (c *etcdClient) watch(servicePrefix, protocol string, update func(endpoints []Endpoint, closed bool),
+	serviceNodes map[string]map[string]Node, watchChan client.WatchChan) {
 	defer update(nil, true)
 
 	// send the first notification
-	update(c.selectAddrs(serviceAddrs, protocol), false)
+	update(c.selectEndpoints(serviceNodes, protocol), false)
 
 	put := func(key string, value []byte) {
 		p, id, err := c.isValidKey(servicePrefix, key)
@@ -238,22 +238,22 @@ func (c *etcdClient) watch(servicePrefix, protocol string, update func(addrs []A
 		if err != nil {
 			return
 		}
-		if _, ok := serviceAddrs[p]; !ok {
-			serviceAddrs[p] = map[string]Node{id: node}
+		if _, ok := serviceNodes[p]; !ok {
+			serviceNodes[p] = map[string]Node{id: node}
 		} else {
-			serviceAddrs[p][id] = node
+			serviceNodes[p][id] = node
 		}
 	}
 
-	rem := func(key string, value []byte) {
+	rem := func(key string, _ []byte) {
 		p, id, err := c.isValidKey(servicePrefix, key)
 		if err != nil {
 			return
 		}
-		if _, ok := serviceAddrs[p]; ok {
-			delete(serviceAddrs[p], id)
-			if len(serviceAddrs[p]) <= 0 {
-				delete(serviceAddrs, p)
+		if _, ok := serviceNodes[p]; ok {
+			delete(serviceNodes[p], id)
+			if len(serviceNodes[p]) <= 0 {
+				delete(serviceNodes, p)
 			}
 		}
 	}
@@ -268,7 +268,7 @@ func (c *etcdClient) watch(servicePrefix, protocol string, update func(addrs []A
 			}
 		}
 		// notify
-		update(c.selectAddrs(serviceAddrs, protocol), false)
+		update(c.selectEndpoints(serviceNodes, protocol), false)
 	}
 }
 
@@ -299,13 +299,13 @@ func (c *etcdClient) splitProtocolAndNodeID(key, servicePrefix string) (protocol
 	}
 }
 
-func (c *etcdClient) selectAddrs(serviceAddrs map[string]map[string]Node, protocol string) (addrs []Address) {
-	if _, ok := serviceAddrs[protocol]; !ok {
+func (c *etcdClient) selectEndpoints(serviceNodes map[string]map[string]Node, protocol string) (endpoints []Endpoint) {
+	if _, ok := serviceNodes[protocol]; !ok {
 		return
 	}
-	if protocolAddrs, ok := serviceAddrs[protocol]; ok {
-		for _, addr := range protocolAddrs {
-			addrs = append(addrs, Address{ID: addr.ID, Addr: addr.Addr, Weight: addr.Weight, Meta: addr.Meta})
+	if protocolNodes, ok := serviceNodes[protocol]; ok {
+		for _, node := range protocolNodes {
+			endpoints = append(endpoints, Endpoint{ID: node.ID, Addr: node.Addr, Weight: node.Weight, Meta: node.Meta})
 		}
 	}
 	return

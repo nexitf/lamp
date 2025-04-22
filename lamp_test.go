@@ -41,8 +41,8 @@ func TestXxx(t *testing.T) {
 	}
 	defer cancel2()
 
-	closeWatch, err := lc.Watch("user-svr", func(addrs []lamp.Address, closed bool) {
-		fmt.Printf("Watch: %+v %+v\n", addrs, closed)
+	closeWatch, err := lc.Watch("user-svr", func(endpoints []lamp.Endpoint, closed bool) {
+		fmt.Printf("Watch: %+v %+v\n", endpoints, closed)
 	})
 	if err != nil {
 		t.Errorf("lamp.Watch: %s", err.Error())
@@ -56,15 +56,15 @@ func TestXxx(t *testing.T) {
 		wg.Done()
 
 		for range time.Tick(time.Second * 2) {
-			addrs, err := lc.DiscoverWithProtocol("user-svr", "mysql")
+			endpoints, err := lc.DiscoverWithProtocol("user-svr", "mysql")
 			if err != nil {
 				fmt.Printf("Discover: %s\n", err.Error())
 			} else {
-				for _, addr := range addrs {
-					options, _ := url.ParseQuery(addr.Meta)
+				for _, endpoint := range endpoints {
+					options, _ := url.ParseQuery(endpoint.Meta)
 					fmt.Printf("Meta: %+v\n", options)
 				}
-				fmt.Printf("Discover: %+v\n", addrs)
+				fmt.Printf("Discover: %+v\n", endpoints)
 			}
 		}
 	}()

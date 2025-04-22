@@ -4,10 +4,10 @@ import (
 	"sort"
 )
 
-func Sort(addrs []Address) {
-	sort.Slice(addrs, func(i, j int) bool { return addrs[i].Addr < addrs[j].Addr })
+func Sort(endpoints []Endpoint) {
+	sort.Slice(endpoints, func(i, j int) bool { return endpoints[i].Addr < endpoints[j].Addr })
 }
 
-func SortByID(addrs []Address) {
-	sort.Slice(addrs, func(i, j int) bool { return addrs[i].ID < addrs[j].ID })
+func SortByID(endpoints []Endpoint) {
+	sort.Slice(endpoints, func(i, j int) bool { return endpoints[i].ID < endpoints[j].ID })
 }
