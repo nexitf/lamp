@@ -15,8 +15,8 @@ var (
 )
 
 const (
-	NodeProtocolDefault = "mixed"
-	NodeWeightDefault   = 100
+	DefaultProtocol = "default"
+	DefaultWeight   = 100
 )
 
 type Middleware interface {
@@ -96,7 +96,7 @@ func WithTTL(ttl int64) ExposeOption {
 
 // WithPublic
 func WithPublic(addr string) ExposeOption {
-	return WithPublicOptions(0, addr, NodeProtocolDefault, NodeWeightDefault, "")
+	return WithPublicOptions(0, addr, DefaultProtocol, DefaultWeight, "")
 }
 
 // WithPublicOptions
@@ -151,7 +151,7 @@ func (c *Client) ExposeWithContext(ctx context.Context, serviceName string, opts
 
 // Discover
 func (c *Client) Discover(serviceName string) (endpoints []Endpoint, err error) {
-	return c.DiscoverWithContext(context.Background(), serviceName, NodeProtocolDefault)
+	return c.DiscoverWithContext(context.Background(), serviceName, DefaultProtocol)
 }
 
 // DiscoverWithProtocol
@@ -166,7 +166,7 @@ func (c *Client) DiscoverWithContext(ctx context.Context, serviceName string, pr
 
 // Watch
 func (c *Client) Watch(serviceName string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
-	return c.WatchWithContext(context.Background(), serviceName, NodeProtocolDefault, update)
+	return c.WatchWithContext(context.Background(), serviceName, DefaultProtocol, update)
 }
 
 // WatchWithProtocol

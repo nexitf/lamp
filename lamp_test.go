@@ -24,7 +24,7 @@ func TestXxx(t *testing.T) {
 	cancel, err := lc.Expose("user-svr",
 		lamp.WithTTL(5),
 		lamp.WithPublic(":8999"),
-		lamp.WithPublicOptions(1, ":3306", "mysql", lamp.NodeWeightDefault, "username=admin&password=123456"),
+		lamp.WithPublicOptions(1, ":3306", "mysql", lamp.DefaultWeight, "username=admin&password=123456"),
 	)
 	if err != nil {
 		t.Errorf("lamp.Expose: %s", err.Error())
