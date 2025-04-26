@@ -56,7 +56,7 @@ func TestXxx(t *testing.T) {
 		wg.Done()
 
 		for range time.Tick(time.Second * 2) {
-			endpoints, err := lc.DiscoverWithProtocol("user-svr", "mysql")
+			endpoints, err := lc.DiscoverWithTag("user-svr", "mysql")
 			if err != nil {
 				fmt.Printf("Discover: %s\n", err.Error())
 			} else {

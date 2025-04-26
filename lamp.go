@@ -15,14 +15,14 @@ var (
 )
 
 const (
-	DefaultProtocol = "default"
-	DefaultWeight   = 100
+	DefaultTag    = "default"
+	DefaultWeight = 100
 )
 
 type Middleware interface {
 	Expose(ctx context.Context, serviceName string, endpoints map[string]Endpoint, ttl int64) (cancel func() error, err error)
-	Discover(ctx context.Context, serviceName string, protocol string) (endpoints []Endpoint, err error)
-	Watch(ctx context.Context, serviceName string, protocol string, update func(endpoints []Endpoint, closed bool)) (close func(), err error)
+	Discover(ctx context.Context, serviceName string, tag string) (endpoints []Endpoint, err error)
+	Watch(ctx context.Context, serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (close func(), err error)
 	Close() error
 }
 
@@ -32,7 +32,7 @@ type Client struct {
 }
 
 // NewClient
-// e. etcd://127.0.0.1:2379/services?
+// e. etcd://127.0.0.1:2379/services
 func NewClient(cfg string) (c *Client, err error) {
 	var URL *url.URL
 	var middleware Middleware
@@ -71,54 +71,38 @@ type exposeOptions struct {
 	ttl       int64
 }
 
-type fnExposeOption struct {
-	f func(*exposeOptions)
-}
-
-// newFnExposeOption
-func newFnExposeOption(f func(*exposeOptions)) *fnExposeOption {
-	return &fnExposeOption{f: f}
-}
-
-// apply
-func (expOpt *fnExposeOption) apply(opts *exposeOptions) {
-	expOpt.f(opts)
-}
-
-type ExposeOption interface {
-	apply(opts *exposeOptions)
-}
+type ExposeOption func(*exposeOptions)
 
 // WithTTL
 func WithTTL(ttl int64) ExposeOption {
-	return newFnExposeOption(func(opts *exposeOptions) { opts.ttl = ttl })
+	return func(opts *exposeOptions) { opts.ttl = ttl }
 }
 
 // WithPublic
 func WithPublic(addr string) ExposeOption {
-	return WithPublicOptions(0, addr, DefaultProtocol, DefaultWeight, "")
+	return WithPublicOptions(0, addr, DefaultTag, DefaultWeight, "")
 }
 
 // WithPublicOptions
-func WithPublicOptions(id int, addr string, protocol string, weight int, meta string) ExposeOption {
-	return newFnExposeOption(func(opts *exposeOptions) {
+func WithPublicOptions(id int, addr string, tag string, weight int, meta string) ExposeOption {
+	return func(opts *exposeOptions) {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return
 		}
 		if id <= 0 {
-			if value := os.Getenv("LAMP_NODE_ID"); value != "" {
+			if value := os.Getenv("LAMP_ENDPOINT_ID"); value != "" {
 				id, _ = strconv.Atoi(value)
 			}
 		}
 		if host == "" {
-			host = os.Getenv("LAMP_NODE_HOSTNAME")
+			host = os.Getenv("LAMP_ENDPOINT_HOSTNAME")
 		}
-		if host == "" || port == "" || protocol == "" || weight < 0 || id < 0 {
+		if host == "" || port == "" || tag == "" || weight < 0 || id < 0 {
 			return
 		}
-		opts.endpoints[protocol] = Endpoint{ID: id, Addr: host + ":" + port, Weight: weight, Meta: meta}
-	})
+		opts.endpoints[tag] = Endpoint{ID: id, Addr: host + ":" + port, Weight: weight, Meta: meta}
+	}
 }
 
 // Expose
@@ -131,14 +115,9 @@ func (c *Client) ExposeWithContext(ctx context.Context, serviceName string, opts
 	expOpts := exposeOptions{
 		endpoints: make(map[string]Endpoint),
 	}
-	// Apply options
-	for _, opt := range opts {
-		opt.apply(&expOpts)
-	}
-
-	// Option: ttl
-	if expOpts.ttl <= 0 {
-		expOpts.ttl = 30
+	// Set options
+	for _, setOpt := range opts {
+		setOpt(&expOpts)
 	}
 
 	// Option: endpoints
@@ -146,37 +125,42 @@ func (c *Client) ExposeWithContext(ctx context.Context, serviceName string, opts
 		return nil, ErrEndpointNotFound
 	}
 
+	// Option: ttl
+	if expOpts.ttl <= 0 {
+		expOpts.ttl = 30
+	}
+
 	return c.middleware.Expose(ctx, serviceName, expOpts.endpoints, expOpts.ttl)
 }
 
 // Discover
 func (c *Client) Discover(serviceName string) (endpoints []Endpoint, err error) {
-	return c.DiscoverWithContext(context.Background(), serviceName, DefaultProtocol)
+	return c.DiscoverWithContext(context.Background(), serviceName, DefaultTag)
 }
 
-// DiscoverWithProtocol
-func (c *Client) DiscoverWithProtocol(serviceName string, protocol string) (endpoints []Endpoint, err error) {
-	return c.DiscoverWithContext(context.Background(), serviceName, protocol)
+// DiscoverWithTag
+func (c *Client) DiscoverWithTag(serviceName string, tag string) (endpoints []Endpoint, err error) {
+	return c.DiscoverWithContext(context.Background(), serviceName, tag)
 }
 
 // DiscoverWithContext
-func (c *Client) DiscoverWithContext(ctx context.Context, serviceName string, protocol string) (endpoints []Endpoint, err error) {
-	return c.middleware.Discover(ctx, serviceName, protocol)
+func (c *Client) DiscoverWithContext(ctx context.Context, serviceName string, tag string) (endpoints []Endpoint, err error) {
+	return c.middleware.Discover(ctx, serviceName, tag)
 }
 
 // Watch
 func (c *Client) Watch(serviceName string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
-	return c.WatchWithContext(context.Background(), serviceName, DefaultProtocol, update)
+	return c.WatchWithContext(context.Background(), serviceName, DefaultTag, update)
 }
 
-// WatchWithProtocol
-func (c *Client) WatchWithProtocol(serviceName string, protocol string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
-	return c.WatchWithContext(context.Background(), serviceName, protocol, update)
+// WatchWithTag
+func (c *Client) WatchWithTag(serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
+	return c.WatchWithContext(context.Background(), serviceName, tag, update)
 }
 
 // WatchWithContext
-func (c *Client) WatchWithContext(ctx context.Context, serviceName string, protocol string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
-	return c.middleware.Watch(ctx, serviceName, protocol, update)
+func (c *Client) WatchWithContext(ctx context.Context, serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
+	return c.middleware.Watch(ctx, serviceName, tag, update)
 }
 
 // Close
