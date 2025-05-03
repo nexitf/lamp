@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,11 +25,12 @@ type etcdClient struct {
 }
 
 var (
-	ErrInvalidEtcdEndpoint    = errors.New("invalid etcd endpoint")
-	ErrInvalidKey             = errors.New("invalid key")
-	ErrInvalidValue           = errors.New("invalid value")
-	ErrInvalidExposedEndpoint = errors.New("invalid exposed endpoint")
-	ErrRegisterFailed         = errors.New("register failed")
+	ErrInvalidEtcdEndpoint     = errors.New("invalid etcd endpoint")
+	ErrEndpointsAreUnreachable = errors.New("endpoints are unreachable")
+	ErrInvalidKey              = errors.New("invalid key")
+	ErrInvalidValue            = errors.New("invalid value")
+	ErrInvalidExposedEndpoint  = errors.New("invalid exposed endpoint")
+	ErrRegisterFailed          = errors.New("register failed")
 )
 
 // newEtcd
@@ -38,6 +40,22 @@ func newEtcd(ctx context.Context, cfg etcdConfig) (c *etcdClient, err error) {
 	cli, err := client.New(cfg.Config)
 	if err != nil {
 		return nil, err
+	}
+
+	health := false
+	for _, endpoint := range cfg.Endpoints {
+		dialCtx, cancelCtx := context.WithTimeout(ctx, cfg.DialTimeout)
+		if _, err = cli.Status(dialCtx, endpoint); err == nil {
+			health = true
+		}
+		cancelCtx()
+		// At least one endpoint is healthy
+		if health {
+			break
+		}
+	}
+	if !health {
+		return nil, ErrEndpointsAreUnreachable
 	}
 	c = &etcdClient{cfg: cfg, cli: cli}
 	return
@@ -61,6 +79,24 @@ func newEtcdWithURL(ctx context.Context, URL *url.URL) (c *etcdClient, err error
 	// Option: Namespace
 	if URL.Path != "" {
 		cfg.Namespace = strings.TrimSuffix(URL.Path, "/")
+	}
+	// Option: Username
+	if user := URL.User; user != nil {
+		cfg.Username = user.Username()
+		if password, ok := user.Password(); ok {
+			cfg.Password = password
+		}
+	}
+
+	params := URL.Query()
+	// Option: DialTimeout
+	if value := params.Get("dial-timeout"); value != "" {
+		if timeout, _ := strconv.ParseInt(value, 10, 64); timeout > 0 {
+			cfg.DialTimeout = time.Duration(timeout) * time.Second
+		}
+	}
+	if cfg.DialTimeout <= 0 {
+		cfg.DialTimeout = 3 * time.Second
 	}
 
 	return newEtcd(ctx, cfg)
