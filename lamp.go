@@ -22,7 +22,7 @@ const (
 type Middleware interface {
 	Expose(ctx context.Context, serviceName string, endpoints map[string]Endpoint, ttl int64) (cancel func() error, err error)
 	Discover(ctx context.Context, serviceName string, tag string) (endpoints []Endpoint, err error)
-	Watch(ctx context.Context, serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (close func(), err error)
+	Watch(ctx context.Context, serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (cancel func() error, err error)
 	Close() error
 }
 
@@ -149,17 +149,17 @@ func (c *Client) DiscoverWithContext(ctx context.Context, serviceName string, ta
 }
 
 // Watch
-func (c *Client) Watch(serviceName string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
+func (c *Client) Watch(serviceName string, update func(endpoints []Endpoint, closed bool)) (cancel func() error, err error) {
 	return c.WatchWithContext(context.Background(), serviceName, DefaultTag, update)
 }
 
 // WatchWithTag
-func (c *Client) WatchWithTag(serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
+func (c *Client) WatchWithTag(serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (cancel func() error, err error) {
 	return c.WatchWithContext(context.Background(), serviceName, tag, update)
 }
 
 // WatchWithContext
-func (c *Client) WatchWithContext(ctx context.Context, serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (close func(), err error) {
+func (c *Client) WatchWithContext(ctx context.Context, serviceName string, tag string, update func(endpoints []Endpoint, closed bool)) (cancel func() error, err error) {
 	return c.middleware.Watch(ctx, serviceName, tag, update)
 }
 
