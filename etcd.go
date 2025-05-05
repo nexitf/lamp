@@ -14,18 +14,19 @@ import (
 	client "go.etcd.io/etcd/client/v3"
 )
 
-type etcdConfig struct {
+type EtcdConfig struct {
 	client.Config
-	Namespace string
+	Namespace     string
+	CancelTimeout time.Duration
 }
 
 type etcdClient struct {
-	cfg etcdConfig
+	cfg EtcdConfig
 	cli *client.Client
 }
 
 var (
-	ErrInvalidEtcdEndpoint     = errors.New("invalid etcd endpoint")
+	ErrNoAvailableEndpoints    = errors.New("no available endpoints")
 	ErrEndpointsAreUnreachable = errors.New("endpoints are unreachable")
 	ErrInvalidKey              = errors.New("invalid key")
 	ErrInvalidValue            = errors.New("invalid value")
@@ -35,8 +36,25 @@ var (
 )
 
 // newEtcd
-func newEtcd(ctx context.Context, cfg etcdConfig) (c *etcdClient, err error) {
+func newEtcd(ctx context.Context, cfg EtcdConfig) (c *etcdClient, err error) {
 	cfg.Context = ctx
+
+	// Option: Endpoints
+	if len(cfg.Endpoints) <= 0 {
+		return nil, ErrNoAvailableEndpoints
+	}
+	// Option: Namespace
+	if cfg.Namespace == "" {
+		cfg.Namespace = "/"
+	}
+	// Option: DialTimeout
+	if cfg.DialTimeout <= 0 {
+		cfg.DialTimeout = 3 * time.Second
+	}
+	// Option: CancelTimeout
+	if cfg.CancelTimeout <= 0 {
+		cfg.CancelTimeout = 3 * time.Second
+	}
 
 	cli, err := client.New(cfg.Config)
 	if err != nil {
@@ -58,23 +76,23 @@ func newEtcd(ctx context.Context, cfg etcdConfig) (c *etcdClient, err error) {
 	if !health {
 		return nil, ErrEndpointsAreUnreachable
 	}
+
 	c = &etcdClient{cfg: cfg, cli: cli}
 	return
 }
 
 // newEtcdWithURL
 func newEtcdWithURL(ctx context.Context, URL *url.URL) (c *etcdClient, err error) {
-	var cfg etcdConfig
+	var cfg EtcdConfig
 
 	// Option: Endpoints
-	if URL.Host == "" {
-		return nil, ErrInvalidEtcdEndpoint
-	}
-	for _, endpoint := range strings.Split(URL.Host, ",") {
-		if _, _, err = net.SplitHostPort(endpoint); err != nil {
-			return nil, err
+	if URL.Host != "" {
+		for _, endpoint := range strings.Split(URL.Host, ",") {
+			if _, _, err = net.SplitHostPort(endpoint); err != nil {
+				return nil, err
+			}
+			cfg.Endpoints = append(cfg.Endpoints, endpoint)
 		}
-		cfg.Endpoints = append(cfg.Endpoints, endpoint)
 	}
 
 	// Option: Namespace
@@ -96,8 +114,11 @@ func newEtcdWithURL(ctx context.Context, URL *url.URL) (c *etcdClient, err error
 			cfg.DialTimeout = time.Duration(timeout) * time.Second
 		}
 	}
-	if cfg.DialTimeout <= 0 {
-		cfg.DialTimeout = 3 * time.Second
+	// Option: CancelTimeout
+	if value := params.Get("cancel-timeout"); value != "" {
+		if timeout, _ := strconv.ParseInt(value, 10, 64); timeout > 0 {
+			cfg.CancelTimeout = time.Duration(timeout) * time.Second
+		}
 	}
 
 	return newEtcd(ctx, cfg)
@@ -116,13 +137,12 @@ func (c *etcdClient) Expose(ctx context.Context, serviceName string, endpoints m
 
 	ctx, cancelCtx := context.WithCancel(ctx)
 	cancel = func() (err error) {
-		defer cancelCtx()
-		_, err = c.cli.Revoke(ctx, leaseID)
-		return
-	}
-
-	revoke := func(leaseID client.LeaseID) (err error) {
-		_, err = c.cli.Revoke(ctx, leaseID)
+		revokeCtx, cancelRevokeCtx := context.WithTimeout(ctx, c.cfg.CancelTimeout)
+		defer func() {
+			cancelRevokeCtx()
+			cancelCtx()
+		}()
+		_, err = c.cli.Revoke(revokeCtx, leaseID)
 		return
 	}
 
@@ -135,7 +155,7 @@ func (c *etcdClient) Expose(ctx context.Context, serviceName string, endpoints m
 		// Expose endpoints using the specified lease ID
 		err = c.expose(ctx, serviceName, endpoints, leaseID)
 		if err != nil {
-			revoke(leaseID)
+			c.cli.Revoke(ctx, leaseID)
 			keepAliveChan = nil
 			leaseID = 0
 		}

@@ -31,8 +31,11 @@ type Client struct {
 	close      func() error
 }
 
-// NewClient
-// e. etcd://127.0.0.1:2379/services
+// NewClient initializes a service discovery client using
+// the given configuration.
+//
+// Support:
+//   - Etcd: etcd://127.0.0.1:2379/services
 func NewClient(cfg string) (c *Client, err error) {
 	var URL *url.URL
 	var middleware Middleware
@@ -62,7 +65,24 @@ func NewClient(cfg string) (c *Client, err error) {
 		cancelCtx()
 		return middleware.Close()
 	}
+	return
+}
 
+// NewClientWithEtcd initializes a service discovery client using etcd.
+func NewClientWithEtcd(cfg EtcdConfig) (c *Client, err error) {
+	ctx, cancelCtx := context.WithCancel(context.Background())
+
+	middleware, err := newEtcd(ctx, cfg)
+	if err != nil {
+		cancelCtx()
+		return nil, err
+	}
+
+	c = &Client{middleware: middleware}
+	c.close = func() (err error) {
+		cancelCtx()
+		return middleware.Close()
+	}
 	return
 }
 
